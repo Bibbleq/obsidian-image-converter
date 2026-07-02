@@ -17,6 +17,7 @@ import { ToolPreset } from "./ImageAnnotation";
 import { SingleImageModalSettings } from './ProcessSingleImageModal';
 import { findFfmpegExecutablePath, normalizeExecutablePath } from "./utils/ffmpegPath";
 import { addInfoIcon } from "./utils/settingInfo";
+import { DEFAULT_ROOT_NOTE_FALLBACK_BUCKET } from "./utils/bucketPath";
 
 import Sortable from "sortablejs";
 
@@ -231,6 +232,13 @@ export interface ImageConverterSettings {
     captionBorder: string;
     captionMarginTop: string;
     captionAlignment: string;
+
+    // --- Paste/drop filename modal ---
+    filenamePromptEnabled: boolean;
+    filenameSuggestionTemplate: string;
+    filenamePromptPlaceholder: string;
+    useFrontmatterAttachmentPrefix: boolean;
+    rootNoteFallbackBucket: string;
 }
 
 // --- Default Settings ---
@@ -429,7 +437,14 @@ export const DEFAULT_SETTINGS: ImageConverterSettings = {
     captionLetterSpacing: 'normal',
     captionBorder: 'none',
     captionMarginTop: '4px',
-    captionAlignment: 'center'
+    captionAlignment: 'center',
+
+    // --- Paste/drop filename modal ---
+    filenamePromptEnabled: false,
+    filenameSuggestionTemplate: "{attachmentprefix}",
+    filenamePromptPlaceholder: "Describe this image",
+    useFrontmatterAttachmentPrefix: true,
+    rootNoteFallbackBucket: DEFAULT_ROOT_NOTE_FALLBACK_BUCKET,
 };
 
 // --- Settings Tab Class ---
@@ -644,6 +659,91 @@ export class ImageConverterSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     });
             });
+
+        // --- Paste/drop filename modal settings ---
+        this.renderPasteRenameModalSettings(containerEl);
+    }
+
+    private renderPasteRenameModalSettings(containerEl: HTMLElement): void {
+        containerEl.createEl("h3", { text: "Paste / drop filename prompt" });
+
+        new Setting(containerEl)
+            .setName("Enable filename prompt on paste/drop")
+            .setDesc(
+                "When enabled, a modal will appear each time you paste or drop an image, " +
+                "letting you choose a meaningful filename before saving."
+            )
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.plugin.settings.filenamePromptEnabled)
+                    .onChange(async (value) => {
+                        this.plugin.settings.filenamePromptEnabled = value;
+                        await this.plugin.saveSettings();
+                        this.display();
+                    })
+            );
+
+        if (!this.plugin.settings.filenamePromptEnabled) return;
+
+        new Setting(containerEl)
+            .setName("Filename suggestion template")
+            .setDesc(
+                "Template used to pre-fill the filename input. Supports all Image Converter variables. " +
+                "Default: {attachmentprefix} (resolves to frontmatter 'attachment_prefix' or note basename)."
+            )
+            .addText(text =>
+                text
+                    .setPlaceholder("{attachmentprefix}")
+                    .setValue(this.plugin.settings.filenameSuggestionTemplate)
+                    .onChange(async (value) => {
+                        this.plugin.settings.filenameSuggestionTemplate = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Filename input placeholder")
+            .setDesc("Placeholder text shown in the filename input when it is empty.")
+            .addText(text =>
+                text
+                    .setPlaceholder("Describe this image")
+                    .setValue(this.plugin.settings.filenamePromptPlaceholder)
+                    .onChange(async (value) => {
+                        this.plugin.settings.filenamePromptPlaceholder = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Use frontmatter 'attachment_prefix'")
+            .setDesc(
+                "When enabled, the {attachmentprefix} variable will first check the note's frontmatter " +
+                "for an 'attachment_prefix' key and use it as the suggestion."
+            )
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.plugin.settings.useFrontmatterAttachmentPrefix)
+                    .onChange(async (value) => {
+                        this.plugin.settings.useFrontmatterAttachmentPrefix = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName("Root-note fallback bucket")
+            .setDesc(
+                "Folder name to use for {bucketpath} and {bucketpath:n} when the active note is " +
+                "in the vault root (no parent folder). Default: Inbox."
+            )
+            .addText(text =>
+                text
+                    .setPlaceholder(DEFAULT_ROOT_NOTE_FALLBACK_BUCKET)
+                    .setValue(this.plugin.settings.rootNoteFallbackBucket)
+                    .onChange(async (value) => {
+                        this.plugin.settings.rootNoteFallbackBucket = value.trim() || DEFAULT_ROOT_NOTE_FALLBACK_BUCKET;
+                        await this.plugin.saveSettings();
+                    })
+            );
     }
 
     initializeFormContainer(): void {
