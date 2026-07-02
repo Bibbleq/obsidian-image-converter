@@ -11,6 +11,13 @@
  */
 
 /**
+ * Default fallback bucket name used for root-level notes (those with no parent folder).
+ * This constant is shared by settings defaults and VariableProcessor so the value is
+ * never duplicated or accidentally inconsistent.
+ */
+export const DEFAULT_ROOT_NOTE_FALLBACK_BUCKET = "Inbox";
+
+/**
  * Return the ordered list of folder segments for a vault-relative note path.
  * The filename itself is excluded; only directory portions are included.
  *
@@ -22,7 +29,7 @@
  * // → []
  */
 export function getNoteFolderSegments(notePath: string): string[] {
-    // Normalise separators (handle any accidental backslashes)
+    // Normalize separators (handle any accidental backslashes)
     const normalised = notePath.replace(/\\/g, "/");
     const lastSlash = normalised.lastIndexOf("/");
     if (lastSlash === -1) {

@@ -1,6 +1,9 @@
 // PasteRenameModal.ts
 import { App, Modal, Setting } from "obsidian";
 
+/** Milliseconds to wait before focusing the filename input, allowing the modal DOM to settle. */
+const FOCUS_DELAY_MS = 50;
+
 export interface PasteRenameResult {
     /** User accepted the modal with a custom name. */
     action: "save";
@@ -103,7 +106,7 @@ export class PasteRenameModal extends Modal {
             });
 
         // Focus input on open
-        window.setTimeout(() => this.inputEl?.focus(), 50);
+        window.setTimeout(() => this.inputEl?.focus(), FOCUS_DELAY_MS);
     }
 
     private handleSave() {

@@ -1,7 +1,7 @@
 // VariableProcessor.ts
 import { App, FileSystemAdapter, TFile, moment as obsidianMomentModule } from "obsidian";
 import { ImageConverterSettings } from "./ImageConverterSettings";
-import { getNoteFolderSegments, resolveBucketPath } from "./utils/bucketPath";
+import { getNoteFolderSegments, resolveBucketPath, DEFAULT_ROOT_NOTE_FALLBACK_BUCKET } from "./utils/bucketPath";
 
 type MomentModule = typeof import('moment');
 // Obsidian exports `moment`, but the upstream typings can treat it as non-callable in TS5.9.
@@ -496,7 +496,7 @@ export class VariableProcessor {
         },
         {
             name: "{secondfolder}",
-            description: "The second folder segment of the note's vault path, or empty string if the note is at root or one level deep.",
+            description: "The second folder segment of the note's vault path, or empty string when the note is in the vault root or only one level deep.",
             example: "Content Creation",
         },
         {
@@ -697,7 +697,7 @@ export class VariableProcessor {
         variables["{secondfolder}"] = noteFolderSegs[1] ?? "";
 
         // {bucketpath} is equivalent to {bucketpath:2}
-        const fallbackBucket = this.settings.rootNoteFallbackBucket ?? "Inbox";
+        const fallbackBucket = this.settings.rootNoteFallbackBucket ?? DEFAULT_ROOT_NOTE_FALLBACK_BUCKET;
         variables["{bucketpath}"] = resolveBucketPath(notePath, 2, fallbackBucket);
 
         // {attachmentprefix}: frontmatter 'attachment_prefix' (when enabled) → note basename
@@ -993,7 +993,7 @@ export class VariableProcessor {
         const activeNotePath = activeFile.parent
             ? `${activeFile.parent.path}/${activeFile.name}`
             : activeFile.name;
-        const fallback = this.settings.rootNoteFallbackBucket ?? "Inbox";
+        const fallback = this.settings.rootNoteFallbackBucket ?? DEFAULT_ROOT_NOTE_FALLBACK_BUCKET;
 
         const bucketpathNPattern = /{bucketpath:(\d+)}/g;
         let bucketpathNMatch;

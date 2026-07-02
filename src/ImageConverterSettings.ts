@@ -17,6 +17,7 @@ import { ToolPreset } from "./ImageAnnotation";
 import { SingleImageModalSettings } from './ProcessSingleImageModal';
 import { findFfmpegExecutablePath, normalizeExecutablePath } from "./utils/ffmpegPath";
 import { addInfoIcon } from "./utils/settingInfo";
+import { DEFAULT_ROOT_NOTE_FALLBACK_BUCKET } from "./utils/bucketPath";
 
 import Sortable from "sortablejs";
 
@@ -443,7 +444,7 @@ export const DEFAULT_SETTINGS: ImageConverterSettings = {
     filenameSuggestionTemplate: "{attachmentprefix}",
     filenamePromptPlaceholder: "Describe this image",
     useFrontmatterAttachmentPrefix: true,
-    rootNoteFallbackBucket: "Inbox",
+    rootNoteFallbackBucket: DEFAULT_ROOT_NOTE_FALLBACK_BUCKET,
 };
 
 // --- Settings Tab Class ---
@@ -736,10 +737,10 @@ export class ImageConverterSettingTab extends PluginSettingTab {
             )
             .addText(text =>
                 text
-                    .setPlaceholder("Inbox")
+                    .setPlaceholder(DEFAULT_ROOT_NOTE_FALLBACK_BUCKET)
                     .setValue(this.plugin.settings.rootNoteFallbackBucket)
                     .onChange(async (value) => {
-                        this.plugin.settings.rootNoteFallbackBucket = value.trim() || "Inbox";
+                        this.plugin.settings.rootNoteFallbackBucket = value.trim() || DEFAULT_ROOT_NOTE_FALLBACK_BUCKET;
                         await this.plugin.saveSettings();
                     })
             );
