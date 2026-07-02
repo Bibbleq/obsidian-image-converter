@@ -25,6 +25,7 @@ import { ProcessFolderModal } from "./ProcessFolderModal";
 import { ProcessCurrentNote } from "./ProcessCurrentNote";
 import { ProcessAllVaultModal } from "./ProcessAllVaultModal"
 import { ImageCaptionManager } from "./ImageCaptionManager"
+import { openPasteRenameModal } from "./PasteRenameModal";
 
 // Settings tab and all DEFAULTS
 import {
@@ -478,6 +479,65 @@ export default class ImageConverterPlugin extends Plugin {
         });
     }
 
+    /**
+     * If `filenamePromptEnabled` is true, shows the rename modal and updates `newFilename`.
+     * Returns `false` if the user cancelled (caller should abort processing).
+     * The returned `newFilename` already has the correct extension applied.
+     */
+    private async applyPasteRenameModal(
+        file: File,
+        destinationPath: string,
+        newFilename: string,
+        activeFile: TFile,
+        selectedConversionPreset: ConversionPreset
+    ): Promise<{ proceed: boolean; newFilename: string }> {
+        if (!this.settings.filenamePromptEnabled) {
+            return { proceed: true, newFilename };
+        }
+
+        // Split extension from the already-resolved filename
+        const lastDot = newFilename.lastIndexOf(".");
+        const currentBaseName = lastDot > -1 ? newFilename.substring(0, lastDot) : newFilename;
+        const ext = lastDot > -1 ? newFilename.substring(lastDot + 1) : "";
+
+        // Compute the suggestion via the suggestion template
+        const suggestionTemplate = this.settings.filenameSuggestionTemplate ?? "{attachmentprefix}";
+        let suggestedName = currentBaseName;
+        try {
+            const resolved = await this.variableProcessor.processTemplate(
+                suggestionTemplate,
+                { file, activeFile }
+            );
+            if (resolved.trim()) {
+                suggestedName = resolved.trim();
+            }
+        } catch {
+            // fall back to the computed base name
+        }
+
+        const placeholder = this.settings.filenamePromptPlaceholder ?? "Describe this image";
+        const result = await openPasteRenameModal(
+            this.app,
+            destinationPath,
+            suggestedName,
+            ext,
+            placeholder
+        );
+
+        if (result.action === "cancel") {
+            return { proceed: false, newFilename };
+        }
+
+        if (result.action === "keep") {
+            return { proceed: true, newFilename };
+        }
+
+        // action === "save": user provided a name (without extension)
+        const userBase = this.folderAndFilenameManagement.sanitizeFilename(result.filename);
+        const newName = ext ? `${userBase}.${ext}` : userBase;
+        return { proceed: true, newFilename: newName };
+    }
+
     private dropPasteRegisterEvents() {
         // On mobile DROP events are not supported, but lets still check as a precaution
         if (Platform.isMobile) return;
@@ -686,6 +746,15 @@ export default class ImageConverterPlugin extends Plugin {
                     console.error("Error determining destination and filename:", errorMessage);
                     new Notice(`Failed to determine destination or filename for "${file.name}". Check console for details.`);
                     return; // Resolve this promise (no further processing for this file)
+                }
+
+                // Step 3.2b: Paste/drop filename modal (when enabled)
+                {
+                    const modalResult = await this.applyPasteRenameModal(
+                        file, destinationPath, newFilename, activeFile, selectedConversionPreset
+                    );
+                    if (!modalResult.proceed) return;
+                    newFilename = modalResult.newFilename;
                 }
 
                 // Rest of the steps (3.3 to 3.7) remain the same,
@@ -1029,6 +1098,15 @@ export default class ImageConverterPlugin extends Plugin {
                     console.error("Error determining destination and filename:", errorMessage);
                     new Notice(`Failed to determine destination or filename for "${file.name}". Check console for details.`);
                     return; // Resolve this promise
+                }
+
+                // Step 3.2b: Paste/drop filename modal (when enabled)
+                {
+                    const modalResult = await this.applyPasteRenameModal(
+                        file, destinationPath, newFilename, activeFile, selectedConversionPreset
+                    );
+                    if (!modalResult.proceed) return;
+                    newFilename = modalResult.newFilename;
                 }
 
                 // Step 3.3: Create Destination Folder

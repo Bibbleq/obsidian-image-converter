@@ -1,6 +1,7 @@
 // VariableProcessor.ts
 import { App, FileSystemAdapter, TFile, moment as obsidianMomentModule } from "obsidian";
 import { ImageConverterSettings } from "./ImageConverterSettings";
+import { getNoteFolderSegments, resolveBucketPath } from "./utils/bucketPath";
 
 type MomentModule = typeof import('moment');
 // Obsidian exports `moment`, but the upstream typings can treat it as non-callable in TS5.9.
@@ -486,6 +487,38 @@ export class VariableProcessor {
             description: "A universally unique identifier (UUID).",
             example: "a1b2c3d4-e5f6-7890-1234-567890abcdef",
         },
+
+        // Bucket path & folder hierarchy
+        {
+            name: "{topfolder}",
+            description: "The first (top-level) folder segment of the note's vault path.",
+            example: "IT Pro",
+        },
+        {
+            name: "{secondfolder}",
+            description: "The second folder segment of the note's vault path, or empty string if the note is at root or one level deep.",
+            example: "Content Creation",
+        },
+        {
+            name: "{bucketpath}",
+            description: "The first two folder segments of the note's vault path joined by '/'. Falls back to the root-note fallback bucket when the note is in the vault root.",
+            example: "IT Pro/Content Creation",
+        },
+        {
+            name: "{bucketpath:n}",
+            description: "The first N folder segments of the note's vault path joined by '/'. Falls back to the root-note fallback bucket for vault-root notes.",
+            example: "{bucketpath:3} -> IT Pro/Content Creation/Content Items",
+        },
+        {
+            name: "{folder:n}",
+            description: "The folder segment at depth N (0-indexed from the vault root) of the note's path, or empty string if that segment does not exist.",
+            example: "{folder:0} -> IT Pro, {folder:1} -> Content Creation",
+        },
+        {
+            name: "{attachmentprefix}",
+            description: "Suggested prefix for attachments. Resolved from frontmatter 'attachment_prefix' (when enabled), then note basename.",
+            example: "My Note",
+        },
     ];
 
     async processTemplate(
@@ -566,7 +599,7 @@ export class VariableProcessor {
         for (const variable of variables) {
             if (variable.name.startsWith("{date") || ["{YYYY}", "{MM}", "{DD}", "{HH}", "{mm}", "{ss}", "{weekday}", "{month}", "{calendar}", "{today}", "{YYYY-MM-DD}", "{tomorrow}", "{yesterday}", "{startofweek}", "{endofweek}", "{startofmonth}", "{endofmonth}", "{nextweek}", "{lastweek}", "{nextmonth}", "{lastmonth}", "{daysinmonth}", "{weekofyear}", "{quarterofyear}", "{week}", "{w}", "{quarter}", "{Q}", "{dayofyear}", "{DDD}", "{monthname}", "{MMMM}", "{dayname}", "{dddd}", "{dateordinal}", "{Do}", "{relativetime}", "{currentdate}", "{yyyy}", "{time}", "{timestamp}"].includes(variable.name)) {
                 categorized["Date & Time"].push(variable);
-            } else if (["{vaultname}", "{vaultpath}", "{parentfolder}", "{grandparentfolder}" ,"{notefolder}", "{notepath}"].includes(variable.name)) {
+            } else if (["{vaultname}", "{vaultpath}", "{parentfolder}", "{grandparentfolder}" ,"{notefolder}", "{notepath}", "{topfolder}", "{secondfolder}", "{bucketpath}", "{bucketpath:n}", "{folder:n}", "{attachmentprefix}"].includes(variable.name)) {
                 categorized["File & Vault"].push(variable);
             } else if (["{imagename}", "{filetype}", "{sizeb}", "{sizekb}", "{sizemb}", "{notename}", "{notename_nospaces}"].includes(variable.name)) {
                 categorized["Basic"].push(variable);
@@ -654,6 +687,33 @@ export class VariableProcessor {
         variables["{parentfolder}"] = activeFile.parent?.name || "";
         variables["{grandparentfolder}"] = (activeFile.parent?.parent?.path == "/" ? activeFile.parent?.name : activeFile.parent?.parent?.name) || "";
         variables["{notefolder}"] = activeFile.parent?.name || "";
+
+        // --- Bucket path variables (static portion) ---
+        const notePath = activeFile.parent
+            ? `${activeFile.parent.path}/${activeFile.name}`
+            : activeFile.name;
+        const noteFolderSegs = getNoteFolderSegments(notePath);
+        variables["{topfolder}"] = noteFolderSegs[0] ?? "";
+        variables["{secondfolder}"] = noteFolderSegs[1] ?? "";
+
+        // {bucketpath} is equivalent to {bucketpath:2}
+        const fallbackBucket = this.settings.rootNoteFallbackBucket ?? "Inbox";
+        variables["{bucketpath}"] = resolveBucketPath(notePath, 2, fallbackBucket);
+
+        // {attachmentprefix}: frontmatter 'attachment_prefix' (when enabled) → note basename
+        let attachmentPrefix = activeFile.basename;
+        if (this.settings.useFrontmatterAttachmentPrefix !== false) {
+            try {
+                const cache = this.app.metadataCache?.getFileCache(activeFile);
+                const fmPrefix = cache?.frontmatter?.["attachment_prefix"] as string | undefined;
+                if (fmPrefix && typeof fmPrefix === "string" && fmPrefix.trim()) {
+                    attachmentPrefix = fmPrefix.trim();
+                }
+            } catch {
+                // metadataCache not available in tests – fall back silently
+            }
+        }
+        variables["{attachmentprefix}"] = attachmentPrefix;
         variables["{vaultname}"] = this.app.vault.getName();
 
         const { adapter } = this.app.vault;
@@ -927,6 +987,29 @@ export class VariableProcessor {
 
             // Replace exactly what the user typed (case-sensitive token match).
             variables[fullToken] = sha256Hash;
+        }
+
+        // Handle {bucketpath:n} and {folder:n}
+        const activeNotePath = activeFile.parent
+            ? `${activeFile.parent.path}/${activeFile.name}`
+            : activeFile.name;
+        const fallback = this.settings.rootNoteFallbackBucket ?? "Inbox";
+
+        const bucketpathNPattern = /{bucketpath:(\d+)}/g;
+        let bucketpathNMatch;
+        while ((bucketpathNMatch = bucketpathNPattern.exec(template)) !== null) {
+            const [fullToken, depthStr] = bucketpathNMatch;
+            const depth = parseInt(depthStr, 10);
+            variables[fullToken] = resolveBucketPath(activeNotePath, depth, fallback);
+        }
+
+        const folderNPattern = /{folder:(\d+)}/g;
+        let folderNMatch;
+        while ((folderNMatch = folderNPattern.exec(template)) !== null) {
+            const [fullToken, indexStr] = folderNMatch;
+            const idx = parseInt(indexStr, 10);
+            const segments = getNoteFolderSegments(activeNotePath);
+            variables[fullToken] = segments[idx] ?? "";
         }
 
         return variables;
